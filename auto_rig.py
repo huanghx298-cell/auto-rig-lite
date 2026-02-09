@@ -36,14 +36,20 @@ class MySquareUI(MayaQWidgetDockableMixin, QtWidgets.QDialog):
                              self.on_build_ue5_IK_controls)
             self._add_button("Build IK/FK Switch Rig",
                              self.on_build_ikfk_switch_controls)
+            self._add_button("Connect Deform Twist (X)",
+                             self.on_connect_deform_twist_chain)
             self._add_button("Build IK/FK Limb Skeletons",
                              self.on_build_ik_fk_limb_skeletons)
             self._add_button("Build Ikfk Deform Drivers",
                              self.on_build_ikfk_deform_drivers)
+            self._add_button("Build Ikfk Spine Deform Drivers",
+                             self.on_build_spine_deform_drivers)
             self._add_button("Build FK Joint Drivers",
                              self.on_build_fk_joint_drivers)
             self._add_button("Build IK Handles",
-                             self.on_build_ik_handles)
+                             self.on_build_limb_ik_joint_drivers)
+            self._add_button("Build Spine IK Handles",
+                             self.on_build_spine_ik_joint_drivers)
         self._add_button("AUTO RIG LITE (UE5)",
                          self.on_auto_rig_lite)
 
@@ -141,6 +147,15 @@ class MySquareUI(MayaQWidgetDockableMixin, QtWidgets.QDialog):
         finally:
             cmds.undoInfo(closeChunk=True)
 
+    def on_connect_deform_twist_chain(self):
+        cmds.undoInfo(openChunk=True)
+        try:
+            RigOps.connect_deform_twist_chain()
+        except Exception as e:
+            cmds.warning(str(e))
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
     def on_build_ik_fk_limb_skeletons(self):
         cmds.undoInfo(openChunk=True)
         try:
@@ -163,6 +178,15 @@ class MySquareUI(MayaQWidgetDockableMixin, QtWidgets.QDialog):
         finally:
             cmds.undoInfo(closeChunk=True)
 
+    def on_build_spine_deform_drivers(self):
+        cmds.undoInfo(openChunk=True)
+        try:
+            RigOps.build_spine_deform_drivers()
+        except Exception as e:
+            cmds.warning(str(e))
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
     def on_build_fk_joint_drivers(self):
         cmds.undoInfo(openChunk=True)
         try:
@@ -172,10 +196,20 @@ class MySquareUI(MayaQWidgetDockableMixin, QtWidgets.QDialog):
         finally:
             cmds.undoInfo(closeChunk=True)
 
-    def on_build_ik_handles(self):
+    def on_build_limb_ik_joint_drivers(self):
         cmds.undoInfo(openChunk=True)
         try:
-            RigOps.build_ik_handles()
+            RigOps.build_limb_ik_joint_drivers()
+        except Exception as e:
+            cmds.warning(str(e))
+        finally:
+            cmds.undoInfo(closeChunk=True)
+
+    def on_build_spine_ik_joint_drivers(self):
+        cmds.undoInfo(openChunk=True)
+        try:
+            curve = RigOps.build_spine_ik_joint_drivers()
+            cmds.select(curve, r=True)
         except Exception as e:
             cmds.warning(str(e))
         finally:
@@ -345,8 +379,7 @@ class RigOps:
                        "upperarm_r", "lowerarm_r", "hand_r",
                        "thigh_l", "calf_l", "foot_l",
                        "thigh_r", "calf_r", "foot_r"]
-        SPINE_JOINTS = ["pelvis", "spine_01",
-                        "spine_02", "spine_03", "spine_04"]
+        SPINE_JOINTS = ["spine_01", "spine_02", "spine_03", "spine_04"]
 
         rig_root = get_or_create_rig_root()
         controls_grp = get_or_create_child(rig_root, "controls")
@@ -365,42 +398,10 @@ class RigOps:
         cmds.matchTransform(root_ctrl, root)
         cmds.parent(root_ctrl, main_system)
 
-        joint_to_ctrl = {}
-
-        for jnt_name in SPINE_JOINTS + LIMB_CHAINS:
-            jnt = joint_map.get(jnt_name)
-            if not jnt:
-                cmds.warning(f"Joint not found under root: {jnt_name}")
-                continue
-
-            size = "large" if jnt_name in SPINE_JOINTS else "medium"
-            ctrl = RigOps.create_ctrl_fk(
-                name=f"{jnt_name}_fk", size=size, normal=(1, 0, 0))
-
-            cmds.matchTransform(ctrl, jnt)
-            ctrl = cmds.parent(ctrl, fk_system)
-            ctrl = cmds.ls(ctrl, long=True)[0]
-
-            joint_to_ctrl[jnt] = ctrl
-
-        sorted_joints = sorted(joint_to_ctrl.keys(),
-                               key=lambda j: j.count("|"), reverse=True)
-
-        for jnt in sorted_joints:
-            ctrl = joint_to_ctrl[jnt]
-
-            parent = cmds.listRelatives(
-                jnt, parent=True, type="joint", fullPath=True)
-            while parent:
-                parent_jnt = parent[0]
-                parent_ctrl = joint_to_ctrl.get(parent_jnt)
-
-                if parent_ctrl:
-                    cmds.parent(ctrl, parent_ctrl)
-                    break
-
-                parent = cmds.listRelatives(
-                    parent_jnt, parent=True, type="joint", fullPath=True)
+        build_fk_chain_controls(joint_names=LIMB_CHAINS, joint_map=joint_map,
+                                parent_grp=fk_system, size="medium")
+        build_fk_chain_controls(joint_names=SPINE_JOINTS, joint_map=joint_map,
+                                parent_grp=fk_system, size="large")
 
         shapes = cmds.listRelatives(
             fk_system, ad=True, type="nurbsCurve", fullPath=True) or []
@@ -415,7 +416,8 @@ class RigOps:
     @staticmethod
     def build_ue5_IK_controls(root):
         JOINTS = ["hand_l", "hand_r", "foot_l", "foot_r",
-                  "lowerarm_l", "lowerarm_r", "calf_l", "calf_r"]
+                  "lowerarm_l", "lowerarm_r", "calf_l", "calf_r",
+                  "spine_01", "spine_03", "spine_05"]
 
         all_joints = [root]+cmds.listRelatives(
             root, ad=True, type="joint", fullPath=True) or []
@@ -429,19 +431,23 @@ class RigOps:
         for jnt_name in JOINTS:
             jnt = joint_map.get(jnt_name)
 
-            if jnt_name.startswith(("hand", "foot")):
+            if jnt_name.startswith(("hand", "foot", "spine")):
                 ctrl = RigOps.create_ctrl_ik(name=f"{jnt_name}_ik")
                 cmds.matchTransform(ctrl, jnt)
-                cmds.parent(ctrl, ik_system)
+                parented_ctrl = cmds.parent(ctrl, ik_system)[0]
+                ctrl_long = cmds.ls(parented_ctrl, long=True)[0]
+                freeze_to_offset_parent_matrix(ctrl_long)
 
             else:
                 ctrl = RigOps.create_ctrl_pole_vector(name=f"{jnt_name}_pole")
                 cmds.matchTransform(ctrl, jnt)
 
-                cmds.setAttr(ctrl + ".rotate", 0, 0, 0)
+                offset = 40.0 if jnt_name.startswith("calf") else -40.0
+                offset *= 1 if jnt_name.endswith("_r") else -1
 
-                offset = 40.0 if jnt.startswith("calf") else -40.0
-                cmds.move(0, 0, offset, ctrl, r=True, os=True)
+                cmds.move(0, offset, 0, ctrl, r=True, os=True)
+                cmds.setAttr(ctrl + ".rotate", 0, 0, 0)
+                freeze_to_offset_parent_matrix(ctrl)
 
                 cmds.addAttr(ctrl, ln="Follow", at="double",
                              min=0, max=10, dv=0)
@@ -468,7 +474,8 @@ class RigOps:
 
     @staticmethod
     def build_ikfk_switch_controls(root):
-        ROOT_JOINTS = ["upperarm_l", "upperarm_r", "thigh_l", "thigh_r"]
+        ROOT_JOINTS = ["upperarm_l", "upperarm_r",
+                       "thigh_l", "thigh_r", "spine_01"]
 
         all_joints = [root]+cmds.listRelatives(
             root, ad=True, type="joint", fullPath=True) or []
@@ -485,8 +492,12 @@ class RigOps:
             cmds.matchTransform(ctrl, jnt)
             cmds.setAttr(ctrl + ".rotate", 0, 0, 0)
 
-            offset = 10.0 if jnt.endswith("_l") else -10.0
-            cmds.move(offset, 0, 0, ctrl, r=True, os=True)
+            offset_y = 0
+            offset_x = 10.0 if jnt_name.endswith("_l") else -10.0
+            if jnt_name.startswith("spine"):
+                offset_x = 20.0
+                offset_y = 10.0
+            cmds.move(offset_x, offset_y, 0, ctrl, r=True, os=True)
             cmds.parent(ctrl, fkik_system)
 
             for attr in ("translateX", "translateY", "translateZ",
@@ -523,8 +534,66 @@ class RigOps:
     @staticmethod
     def build_ik_fk_limb_skeletons(root):
 
-        build_limb_skeleton(root_joint=root, suffix="ik",)
+        build_limb_skeleton(root_joint=root, suffix="ik")
         build_limb_skeleton(root_joint=root, suffix="fk")
+
+    @staticmethod
+    def connect_deform_twist_chain():
+        DEFORM_TWIST_RULES = {
+            "lowerarm_l": ("upperarm_twist_01_l", "upperarm_twist_02_l"),
+            "lowerarm_r": ("upperarm_twist_01_r", "upperarm_twist_02_r"),
+            "hand_l": ("lowerarm_twist_01_l", "lowerarm_twist_02_l"),
+            "hand_r": ("lowerarm_twist_01_r", "lowerarm_twist_02_r"),
+            "calf_l":    ("thigh_twist_01_l",    "thigh_twist_02_l"),
+            "calf_r":    ("thigh_twist_01_r",    "thigh_twist_02_r"),
+            "foot_l":     ("calf_twist_01_l",     "calf_twist_02_l"),
+            "foot_r":     ("calf_twist_01_r",     "calf_twist_02_r"), }
+
+        deform_joints = RIG_CTX.joint_registry.get("deform", {})
+
+        for driver_name, (twist1_name, twist2_name) in DEFORM_TWIST_RULES.items():
+            driver = deform_joints.get(driver_name)
+            twist1 = deform_joints.get(twist1_name)
+            twist2 = deform_joints.get(twist2_name)
+
+            driver_base_rx = cmds.getAttr(driver + ".rotateX")
+            twist1_base_rx = cmds.getAttr(twist1 + ".rotateX")
+            twist2_base_rx = cmds.getAttr(twist2 + ".rotateX")
+
+            driver_delta = cmds.createNode(
+                "plusMinusAverage", n=f"{driver_name}_delta_PMA")
+            cmds.setAttr(driver_delta + ".operation", 2)
+            cmds.connectAttr(driver + ".rotateX",
+                             driver_delta + ".input1D[0]", force=True)
+            cmds.setAttr(driver_delta + ".input1D[1]", driver_base_rx)
+
+            md1 = cmds.createNode(
+                "multiplyDivide", n=f"{driver_name}_twist01_MD")
+            cmds.setAttr(md1 + ".input2X", 0.33)
+            cmds.connectAttr(driver_delta + ".output1D",
+                             md1 + ".input1X", force=True)
+            twist_sum1 = cmds.createNode(
+                "plusMinusAverage", n=f"{driver_name}_twist01_PMA")
+            cmds.setAttr(twist_sum1 + ".operation", 1)  # sum
+            cmds.setAttr(twist_sum1 + ".input1D[0]", twist1_base_rx)
+            cmds.connectAttr(md1 + ".outputX", twist_sum1 +
+                             ".input1D[1]", force=True)
+            cmds.connectAttr(twist_sum1 + ".output1D",
+                             twist1 + ".rotateX", force=True)
+
+            md2 = cmds.createNode(
+                "multiplyDivide", n=f"{driver_name}_twist02_MD")
+            cmds.setAttr(md2 + ".input2X", 0.66)
+            cmds.connectAttr(driver_delta + ".output1D",
+                             md2 + ".input1X", force=True)
+            twist_sum2 = cmds.createNode(
+                "plusMinusAverage", n=f"{driver_name}_twist02_PMA")
+            cmds.setAttr(twist_sum2 + ".operation", 1)  # sum
+            cmds.setAttr(twist_sum2 + ".input1D[0]", twist2_base_rx)
+            cmds.connectAttr(md2 + ".outputX", twist_sum2 +
+                             ".input1D[1]", force=True)
+            cmds.connectAttr(twist_sum2 + ".output1D",
+                             twist2 + ".rotateX", force=True)
 
     @staticmethod
     def build_ikfk_deform_drivers():
@@ -579,21 +648,68 @@ class RigOps:
                     rev + ".outputX", ik_ctrl + ".visibility", force=True)
 
     @staticmethod
+    def build_spine_deform_drivers():
+        SPINE_CHAIN = {"deform": ("spine_01", "spine_02", "spine_03",
+                                  "spine_04", "spine_05"),
+                       "ik": ("spine_01", "spine_03", "spine_05"),
+                       "fk": ("spine_01", "spine_02", "spine_03", "spine_04")}
+
+        ikfk_ctrls = RIG_CTX.control_registry.get("ikfk", {})
+        fk_ctrls = RIG_CTX.control_registry.get("fk", {})
+        ik_ctrls = RIG_CTX.control_registry.get("ik", {})
+
+        fk_joints = RIG_CTX.joint_registry.get("fk", {})
+        ik_joints = RIG_CTX.joint_registry.get("ik", {})
+        deform_joints = RIG_CTX.joint_registry.get("deform", {})
+
+        ctrl = ikfk_ctrls.get("spine_01")
+        ctrl_short = ctrl.split("|")[-1]
+
+        md = cmds.createNode("multiplyDivide", n="spine_IKFKBlend_MD")
+        cmds.setAttr(md + ".input2X", 0.1)
+        cmds.connectAttr(f"{ctrl_short}.IKFKBlend",
+                         md + ".input1X", force=True)
+
+        rev = cmds.createNode("reverse", n=f"spine_IKFKBlend_REV")
+        cmds.connectAttr(md + ".outputX", rev + ".inputX", force=True)
+
+        for joint_name in SPINE_CHAIN["deform"]:
+            fk = fk_joints.get(joint_name)
+            ik = ik_joints.get(joint_name)
+            deform = deform_joints.get(joint_name)
+
+            constraint = cmds.parentConstraint(fk, ik, deform, mo=False)[0]
+
+            w0_attr = cmds.listAttr(constraint, string="*W0")[0]
+            w1_attr = cmds.listAttr(constraint, string="*W1")[0]
+            cmds.connectAttr(
+                md + ".outputX", f"{constraint}.{w0_attr}", force=True)
+            cmds.connectAttr(
+                rev + ".outputX", f"{constraint}.{w1_attr}", force=True)
+
+        for j in SPINE_CHAIN["fk"]:
+            fk_ctrl = fk_ctrls.get(j)
+            cmds.connectAttr(
+                md + ".outputX", fk_ctrl + ".visibility", force=True)
+
+        for j in SPINE_CHAIN["ik"]:
+            ik_ctrl = ik_ctrls.get(j)
+            cmds.connectAttr(
+                rev + ".outputX", ik_ctrl + ".visibility", force=True)
+
+    @staticmethod
     def build_fk_joint_drivers():
         LIMB_JOINTS = {"upperarm_l", "lowerarm_l", "hand_l",
                        "upperarm_r", "lowerarm_r", "hand_r",
                        "thigh_l", "calf_l", "foot_l",
-                       "thigh_r", "calf_r", "foot_r"}
+                       "thigh_r", "calf_r", "foot_r",
+                       "spine_01", "spine_02", "spine_03", "spine_04"}
 
         fk_ctrls = RIG_CTX.control_registry.get("fk", {})
         fk_joints = RIG_CTX.joint_registry.get("fk", {})
 
         for short, ctrl in fk_ctrls.items():
             base = short.replace("_fk", "")
-
-            if base not in LIMB_JOINTS:
-                continue
-
             joint = fk_joints.get(base)
 
             freeze_to_offset_parent_matrix(ctrl)
@@ -604,11 +720,15 @@ class RigOps:
                                  f"{joint}.{attr}", force=True)
 
     @staticmethod
-    def build_ik_handles():
+    def build_limb_ik_joint_drivers():
         IK_LIMB_CHAINS = {"upperarm_l": ("upperarm_l", "lowerarm_l", "hand_l"),
                           "upperarm_r": ("upperarm_r", "lowerarm_r", "hand_r"),
                           "thigh_l": ("thigh_l", "calf_l", "foot_l"),
                           "thigh_r": ("thigh_r", "calf_r", "foot_r")}
+        IK_POLE_MAP = {"hand_l": "lowerarm_l",
+                       "hand_r": "lowerarm_r",
+                       "foot_l": "calf_l",
+                       "foot_r": "calf_r"}
         joint_map = RIG_CTX.joint_registry.get("ik", {})
         ctrl_map = RIG_CTX.control_registry.get("ik", {})
 
@@ -628,7 +748,69 @@ class RigOps:
                 sj=start_joint, ee=end_joint, sol="ikRPsolver", n=f"{end_name}_IKH")
 
             ik_ctrl = ctrl_map.get(f"{end_name}")
+            cmds.connectAttr(f"{ik_ctrl}.rotate",
+                             f"{end_joint}.rotate", force=True)
             cmds.parent(ik_handle, ik_ctrl)
+
+        for ik_key, pole_key in IK_POLE_MAP.items():
+            ik_ctrl = ctrl_map.get(ik_key)
+            pole_ctrl = ctrl_map.get(pole_key)
+
+            ikh = cmds.listRelatives(
+                ik_ctrl, ad=True, type="ikHandle", fullPath=True)[0]
+            cmds.poleVectorConstraint(pole_ctrl, ikh)
+
+    @staticmethod
+    def build_spine_ik_joint_drivers():
+        SPINE_JOINTS = {"spine_01", "spine_02",
+                        "spine_03", "spine_04", "spine_05"}
+
+        ik_joints = RIG_CTX.joint_registry.get("ik", {})
+        ik_ctrls = RIG_CTX.control_registry.get("ik", {})
+
+        joints = []
+        for short, jnt in ik_joints.items():
+            if short in SPINE_JOINTS:
+                joints.append(jnt)
+
+        joints.sort(key=lambda j: j.count("|"))
+        points = [cmds.xform(j, q=True, ws=True, t=True)for j in joints]
+
+        curve = cmds.curve(p=points, d=4, n="spine_ik_curve")
+
+        start_joint = joints[0]
+        end_joint = joints[-1]
+
+        ik_handle, effector = cmds.ikHandle(sj=start_joint, ee=end_joint,
+                                            sol="ikSplineSolver",
+                                            c=curve, ccv=False, pcv=False)
+        cmds.rename(ik_handle, "spine_ikHandle")
+
+        parent_grp = cmds.listRelatives(ik_joints.get(
+            "spine_01"), parent=True, fullPath=True)
+        lower = cmds.duplicate(ik_joints.get("spine_01"),
+                               parentOnly=True, name="lower_spine_ik")[0]
+        mid = cmds.duplicate(ik_joints.get("spine_03"),
+                             parentOnly=True, name="mid_spine_ik")[0]
+        upper = cmds.duplicate(ik_joints.get("spine_05"),
+                               parentOnly=True, name="upper_spine_ik")[0]
+        cmds.parent([mid, upper], parent_grp)
+
+        bind_joints = [lower, mid, upper]
+        cmds.skinCluster(bind_joints, curve, tsb=True,
+                         mi=1, nw=1,  name="spine_curve_skinCluster")
+
+        ctrl_map = {"spine_01": lower, "spine_03": mid, "spine_05": upper}
+        for spine_key, driver_jnt in ctrl_map.items():
+            ctrl = ik_ctrls.get(spine_key)
+            driver_jnt_full = cmds.ls(driver_jnt, long=True)[0]
+
+            freeze_to_offset_parent_matrix(driver_jnt_full)
+
+            cmds.connectAttr(ctrl + ".rotate",
+                             driver_jnt_full + ".rotate", force=True)
+            cmds.connectAttr(ctrl + ".translate",
+                             driver_jnt_full + ".translate", force=True)
 
     @staticmethod
     def auto_rig_lite_ue5(root):
@@ -639,25 +821,29 @@ class RigOps:
         RigOps.build_ue5_IK_controls(root)
         RigOps.build_ikfk_switch_controls(root)
         RigOps.build_ik_fk_limb_skeletons(root)
+        RigOps.connect_deform_twist_chain()
         RigOps.build_ikfk_deform_drivers()
+        RigOps.build_spine_deform_drivers()
         RigOps.build_fk_joint_drivers()
-        RigOps.build_ik_handles()
+        RigOps.build_limb_ik_joint_drivers()
+        RigOps.build_spine_ik_joint_drivers()
 
 
 def build_limb_skeleton(root_joint, suffix):
     target_joints = ["upperarm_r", "upperarm_l",
-                     "thigh_r", "thigh_l"]
+                     "thigh_r", "thigh_l", "spine_01"]
 
     LIMB_JOINTS = {"upperarm_l", "lowerarm_l", "hand_l",
                    "upperarm_r", "lowerarm_r", "hand_r",
                    "thigh_l", "calf_l", "foot_l",
-                   "thigh_r", "calf_r", "foot_r"}
+                   "thigh_r", "calf_r", "foot_r",
+                   "spine_01", "spine_02", "spine_03", "spine_04", "spine_05"}
 
     new_root = cmds.duplicate(root_joint, rr=True)[0]
     new_root = cmds.ls(new_root, long=True)[0]
 
-    rig_root = get_or_create_rig_root()
-    skeleton_grp = get_or_create_child(rig_root, "skeleton")
+    rig_root_grp = get_or_create_rig_root()
+    skeleton_grp = get_or_create_child(rig_root_grp, "skeleton")
     limb_joints_grp = cmds.group(em=True, n=suffix, p=skeleton_grp)
 
     full_hierarchy = [new_root] + (
@@ -667,15 +853,13 @@ def build_limb_skeleton(root_joint, suffix):
     for base_name in target_joints:
         limb_root = joint_by_short.get(base_name)
 
-        parent_transform = cmds.parent(limb_root, limb_joints_grp)[0]
-        parent_transform = cmds.rename(
-            parent_transform.split("|", 1)[0], f"{base_name}_{suffix}")
+        limb_grp = cmds.group(limb_root, name=f"{suffix}_{base_name}")
+        limb_grp = cmds.parent(limb_grp, limb_joints_grp)[0]
 
         limb_root = cmds.listRelatives(
-            parent_transform, c=True, type="joint", f=True)[0]
+            limb_grp, c=True, type="joint", f=True)[0]
         limb_joints = [limb_root] + (
             cmds.listRelatives(limb_root, ad=True, type="joint", f=True) or [])
-
         limb_joints.sort(key=lambda x: x.count("|"), reverse=True)
 
         rename_queue = []
@@ -694,10 +878,45 @@ def build_limb_skeleton(root_joint, suffix):
 
         for _, short in rename_queue:
             new_joint = cmds.ls(f"{short}_{suffix}", long=True)[0]
-            cmds.setAttr(new_joint + ".visibility", 0)
+            # cmds.setAttr(new_joint + ".visibility", 0)
             RIG_CTX.joint_registry.setdefault(suffix, {})[short] = new_joint
 
     cmds.delete(new_root)
+
+
+def build_fk_chain_controls(joint_names, joint_map, parent_grp, size):
+    joint_to_ctrl = {}
+
+    for jnt_name in joint_names:
+        jnt = joint_map.get(jnt_name)
+
+        ctrl = RigOps.create_ctrl_fk(
+            name=f"{jnt_name}_fk", size=size, normal=(1, 0, 0))
+
+        cmds.matchTransform(ctrl, jnt)
+        ctrl = cmds.parent(ctrl, parent_grp)
+        ctrl = cmds.ls(ctrl, long=True)[0]
+
+        joint_to_ctrl[jnt] = ctrl
+
+    limb_sorted = sorted(joint_to_ctrl.keys(),
+                         key=lambda j: j.count("|"), reverse=True)
+
+    for jnt in limb_sorted:
+        ctrl = joint_to_ctrl[jnt]
+
+        parent = cmds.listRelatives(
+            jnt, parent=True, type="joint", fullPath=True)
+        while parent:
+            parent_jnt = parent[0]
+            parent_ctrl = joint_to_ctrl.get(parent_jnt)
+
+            if parent_ctrl:
+                cmds.parent(ctrl, parent_ctrl)
+                break
+
+            parent = cmds.listRelatives(
+                parent_jnt, parent=True, type="joint", fullPath=True)
 
 
 def get_or_create_rig_root():
@@ -732,6 +951,15 @@ def show_square_ui():
     show_square_ui.instance = MySquareUI()
     show_square_ui.instance.show(dockable=True)
     return show_square_ui.instance
+
+
+def debug_transform(node, label=""):
+    node = cmds.ls(node, l=True)[0]
+    t = cmds.xform(node, q=True, ws=True, t=True)
+    r = cmds.xform(node, q=True, ws=True, ro=True)
+    print(f"[DEBUG]{label} {node}")
+    print(f"    T(ws): {t}")
+    print(f"    R(ws): {r}")
 
 
 RIG_CTX = RigBuildContext()
