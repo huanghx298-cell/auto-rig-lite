@@ -1,4 +1,4 @@
-# auto-rig-lite
+# auto-rig
 # Lightweight auto rig tool for Maya (FK/IK biped).
 
 A lightweight auto rigging tool for Maya, focused on automated biped setup.
