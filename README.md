@@ -11,34 +11,19 @@
                                        │
         ┌──────────────────────────────┼──────────────────────────────┐
         ▼                              ▼                              ▼
-
-
-
-
-
-        
-
-┌────────────────────┐     ┌────────────────────┐     ┌────────────────────┐
-│     Rig System     │     │  Animation System  │     │   Utility Layer    │
-│────────────────────│     │────────────────────│     │────────────────────│
-│ - Skeleton         │     │ - Retargeting      │     │ - RigHelpers       │
-│ - Limb (IK/FK)     │     │ - FK/IK Transfer   │     │ - Math / Transform │
-│ - Spine            │     │ - Root Motion      │     │ - Group Utilities  │
-│ - Hand / Foot      │     │ - Locomotion       │     │                    │
-│ - Twist            │     │ - Foot Lock        │     │                    │
-│ - Space System     │     │                    │     │                    │
-└─────────┬──────────┘     └─────────┬──────────┘     └─────────┬──────────┘
-          │                          │                          │
-          └──────────────┬───────────┴──────────────┬───────────┘
-                         ▼                          ▼
-
-
-
-
-
-
-                         
-
+┌────────────────────┐     ┌────────────────────┐    
+│     Rig System     │     │  Animation System  │    
+│────────────────────│     │────────────────────│     
+│ - Skeleton         │     │ - Retargeting      │    
+│ - Limb (IK/FK)     │     │ - FK/IK Transfer   │   
+│ - Spine            │     │ - Root Motion      │    
+│ - Hand / Foot      │     │ - Locomotion       │   
+│ - Twist            │     │ - Foot Lock        │    
+│ - Space System     │     │                    │    
+└─────────┬──────────┘     └─────────┬──────────┘     
+          │                          │                
+          └──────────────┬───────────┴
+                         ▼                         
            ┌────────────────────────────────────────────┐
            │               Context Layer                │
            │                                            │
