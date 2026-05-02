@@ -18,10 +18,10 @@
           │        Rig System          │ │     Animation System       │ │      Utility Layer         │
           │────────────────────────────│ │────────────────────────────│ │────────────────────────────│
           │ rig_builders_body.py       │ │ animation_transfer.py      │ │ rig_builders_runtime.py    │
-          │ - Skeleton                 │ │ - Retargeting              │ │ - RigHelpers               │
-          │                            │ │                            │ │                            │
-          │ rig_builders_ctrl.py       │ │ animation_runtime.py       │ │ (Shared Utils)             │
-          │ - Controls (FK/IK)         │ │ - FK/IK Transfer           │ │ - Math / Transforms        │
+          │ - Skeleton                 │ │ - FK/IK Transfer           │ │ - RigHelpers               │
+          │                            │ │ - Retarget constraints     │ │                            │
+          │ rig_builders_ctrl.py       │ │ - Bake animation           │ │ (Shared Utils)             │
+          │ - Controls (FK/IK)         │ │                            │ │ - Math / Transforms        │
           │                            │ │                            │ │ - Group Management         │
           │ rig_builders_body.py       │ │ animation_locomotion.py    │ │                            │
           │ - Limb (IK/FK)             │ │ - Root Motion              │ │                            │
